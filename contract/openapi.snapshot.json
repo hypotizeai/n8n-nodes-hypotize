@@ -1,0 +1,1642 @@
+{
+    "openapi": "3.1.0",
+    "info": {
+        "title": "Hypotize API",
+        "version": "1.0.0",
+        "summary": "Growth experiments for agents and automations.",
+        "description": "Read and write the growth experiments of your Hypotize projects: ideas, tests, outcomes and learnings.\n\nAuthenticate with a personal API key (Settings, API keys) sent as `Authorization: Bearer hyp_...`. A Read only key can call the GET endpoints; a Read and write key can also call the others.\n\nErrors use real HTTP status codes and one body shape: `{ \"error\": { \"code\", \"message\" } }`, sometimes with extra fields such as `required_roles` or the import row that failed.\n\n- 400 INVALID_REQUEST, INVALID_JSON, INVALID_CURSOR, INVALID_IDEMPOTENCY_KEY and the lifecycle codes (EXPERIMENT_NOT_READY, OUTCOME_REQUIRED...)\n- 401 UNAUTHORIZED: missing, invalid, revoked or expired API key\n- 403 FORBIDDEN (the key's access level is too low) or INSUFFICIENT_ROLE (the project role is too low, with required_roles)\n- 404 NOT_FOUND\n- 409 STALE_EXPERIMENT (expected_updated_at is not the current updated_at) or IDEMPOTENCY_KEY_REUSED\n- 429 RATE_LIMITED: 300 requests a minute per key, 500 written rows every 5 minutes\n\nWrites accept an `Idempotency-Key` header: a retry with the same key and body within 24 hours returns the first response, with the header `Idempotent-Replayed: true`.\n\nLists are paginated with `cursor`: pass `next_cursor` from the previous page until it is null.\n\nThe same operations are available to AI agents on the MCP server at https://api.hypotize.ai/mcp.",
+        "contact": {
+            "name": "Hypotize",
+            "url": "https://hypotize.ai",
+            "email": "hello@hypotize.ai"
+        },
+        "termsOfService": "https://hypotize.ai/terms"
+    },
+    "externalDocs": {
+        "description": "Hypotize",
+        "url": "https://hypotize.ai/?utm_source=openapi&utm_medium=api"
+    },
+    "servers": [
+        {
+            "url": "https://api.hypotize.ai/v1"
+        }
+    ],
+    "security": [
+        {
+            "apiKey": []
+        }
+    ],
+    "tags": [
+        {
+            "name": "Projects",
+            "description": "Projects you can access."
+        },
+        {
+            "name": "Experiments",
+            "description": "Ideas, tests in the pipeline and their outcomes. An idea is an experiment in the Idea status."
+        },
+        {
+            "name": "Learnings",
+            "description": "Closed experiments with their result and learning."
+        },
+        {
+            "name": "Comments",
+            "description": "Dated notes on an experiment."
+        }
+    ],
+    "paths": {
+        "/projects": {
+            "get": {
+                "operationId": "listProjects",
+                "summary": "List projects",
+                "description": "Projects the API key's user can access, across workspaces, with the user's role and permissions.",
+                "tags": [
+                    "Projects"
+                ],
+                "parameters": [
+                    {
+                        "name": "cursor",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 2048
+                        }
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "default": 20,
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 100
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": true
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "429": {
+                        "$ref": "#/components/responses/Error"
+                    }
+                }
+            }
+        },
+        "/projects/{project_id}": {
+            "get": {
+                "operationId": "getProject",
+                "summary": "Get a project",
+                "description": "One project with its framework, settings and the user's role.",
+                "tags": [
+                    "Projects"
+                ],
+                "parameters": [
+                    {
+                        "name": "project_id",
+                        "in": "path",
+                        "required": true,
+                        "description": "Project ID, from GET /projects.",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": true
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "429": {
+                        "$ref": "#/components/responses/Error"
+                    }
+                }
+            }
+        },
+        "/projects/{project_id}/experiments": {
+            "get": {
+                "operationId": "listExperiments",
+                "summary": "List experiments",
+                "description": "Experiments of a project, Ideas included, most recently updated first. Filter by status, funnel stage, tags or updated_after.\n\nFor a polling trigger, pass updated_after with the time of the last poll and dedupe on id plus updated_at.",
+                "tags": [
+                    "Experiments"
+                ],
+                "parameters": [
+                    {
+                        "name": "project_id",
+                        "in": "path",
+                        "required": true,
+                        "description": "Project ID, from GET /projects.",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    },
+                    {
+                        "name": "statuses",
+                        "in": "query",
+                        "required": false,
+                        "style": "form",
+                        "explode": true,
+                        "description": "Repeat the parameter or separate values with commas.",
+                        "schema": {
+                            "maxItems": 12,
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "enum": [
+                                    "Idea",
+                                    "Approved",
+                                    "Ready",
+                                    "Running",
+                                    "Analyzing",
+                                    "Winning",
+                                    "Failed",
+                                    "Learned",
+                                    "Archived",
+                                    "Inconclusive",
+                                    "Testing",
+                                    "Analysis"
+                                ]
+                            }
+                        }
+                    },
+                    {
+                        "name": "funnel",
+                        "in": "query",
+                        "required": false,
+                        "style": "form",
+                        "explode": true,
+                        "description": "Repeat the parameter or separate values with commas.",
+                        "schema": {
+                            "maxItems": 6,
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "enum": [
+                                    "Awareness",
+                                    "Acquisition",
+                                    "Activation",
+                                    "Revenue",
+                                    "Retention",
+                                    "Referral"
+                                ]
+                            }
+                        }
+                    },
+                    {
+                        "name": "tags",
+                        "in": "query",
+                        "required": false,
+                        "style": "form",
+                        "explode": true,
+                        "description": "Repeat the parameter for each value.",
+                        "schema": {
+                            "maxItems": 100,
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 100
+                            }
+                        }
+                    },
+                    {
+                        "name": "updated_after",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "date-time",
+                            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                        }
+                    },
+                    {
+                        "name": "cursor",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 2048
+                        }
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "default": 50,
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 100
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": true
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "429": {
+                        "$ref": "#/components/responses/Error"
+                    }
+                }
+            }
+        },
+        "/projects/{project_id}/ideas": {
+            "post": {
+                "operationId": "createIdea",
+                "summary": "Create an idea",
+                "description": "Adds a new experiment idea to the project backlog.",
+                "tags": [
+                    "Experiments"
+                ],
+                "parameters": [
+                    {
+                        "name": "project_id",
+                        "in": "path",
+                        "required": true,
+                        "description": "Project ID, from GET /projects.",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    },
+                    {
+                        "$ref": "#/components/parameters/IdempotencyKey"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "title": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 240
+                                    },
+                                    "short_idea": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 2000
+                                    },
+                                    "description": {
+                                        "type": "string",
+                                        "maxLength": 20000
+                                    },
+                                    "hypothesis": {
+                                        "type": "string",
+                                        "maxLength": 20000
+                                    },
+                                    "target_segment": {
+                                        "type": "string",
+                                        "maxLength": 2000
+                                    },
+                                    "target_metric": {
+                                        "type": "string",
+                                        "maxLength": 1000
+                                    },
+                                    "success_metric": {
+                                        "type": "string",
+                                        "maxLength": 2000
+                                    },
+                                    "fail_criterion": {
+                                        "type": "string",
+                                        "maxLength": 2000
+                                    },
+                                    "baseline_value": {
+                                        "type": "string",
+                                        "maxLength": 2000
+                                    },
+                                    "start_date": {
+                                        "type": "string",
+                                        "format": "date-time",
+                                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                                    },
+                                    "due_date": {
+                                        "type": "string",
+                                        "format": "date-time",
+                                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                                    },
+                                    "funnel": {
+                                        "type": "string",
+                                        "enum": [
+                                            "Awareness",
+                                            "Acquisition",
+                                            "Activation",
+                                            "Revenue",
+                                            "Retention",
+                                            "Referral"
+                                        ]
+                                    },
+                                    "framework": {
+                                        "type": "string",
+                                        "enum": [
+                                            "ICE",
+                                            "PIE",
+                                            "RICE",
+                                            "CUSTOM"
+                                        ]
+                                    },
+                                    "custom_framework_id": {
+                                        "type": "string",
+                                        "format": "uuid",
+                                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                    },
+                                    "tags": {
+                                        "maxItems": 100,
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 100
+                                        }
+                                    },
+                                    "variants": {
+                                        "maxItems": 20,
+                                        "type": "array",
+                                        "items": {
+                                            "type": "object",
+                                            "properties": {
+                                                "key": {
+                                                    "type": "string",
+                                                    "minLength": 1,
+                                                    "maxLength": 40,
+                                                    "pattern": "^[A-Za-z0-9_-]+$"
+                                                },
+                                                "name": {
+                                                    "type": "string",
+                                                    "minLength": 1,
+                                                    "maxLength": 1000
+                                                },
+                                                "is_control": {
+                                                    "default": false,
+                                                    "type": "boolean"
+                                                },
+                                                "sample_size": {
+                                                    "type": "integer",
+                                                    "minimum": 0,
+                                                    "maximum": 1000000000
+                                                }
+                                            },
+                                            "required": [
+                                                "key",
+                                                "name"
+                                            ],
+                                            "additionalProperties": false
+                                        }
+                                    }
+                                },
+                                "required": [
+                                    "title",
+                                    "short_idea",
+                                    "funnel"
+                                ],
+                                "additionalProperties": false
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": true
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "409": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "429": {
+                        "$ref": "#/components/responses/Error"
+                    }
+                }
+            }
+        },
+        "/projects/{project_id}/experiments/import": {
+            "post": {
+                "operationId": "importExperiments",
+                "summary": "Import experiments",
+                "description": "Imports up to 50 existing experiments, at any stage, in one atomic call: one invalid row rolls back the batch, and the error names it.",
+                "tags": [
+                    "Experiments"
+                ],
+                "parameters": [
+                    {
+                        "name": "project_id",
+                        "in": "path",
+                        "required": true,
+                        "description": "Project ID, from GET /projects.",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    },
+                    {
+                        "$ref": "#/components/parameters/IdempotencyKey"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "experiments"
+                                ],
+                                "properties": {
+                                    "experiments": {
+                                        "minItems": 1,
+                                        "maxItems": 50,
+                                        "type": "array",
+                                        "items": {
+                                            "type": "object",
+                                            "properties": {
+                                                "title": {
+                                                    "type": "string",
+                                                    "minLength": 1,
+                                                    "maxLength": 240
+                                                },
+                                                "short_idea": {
+                                                    "type": "string",
+                                                    "minLength": 1,
+                                                    "maxLength": 2000
+                                                },
+                                                "description": {
+                                                    "type": "string",
+                                                    "maxLength": 20000
+                                                },
+                                                "hypothesis": {
+                                                    "type": "string",
+                                                    "maxLength": 20000
+                                                },
+                                                "target_segment": {
+                                                    "type": "string",
+                                                    "maxLength": 2000
+                                                },
+                                                "target_metric": {
+                                                    "type": "string",
+                                                    "maxLength": 1000
+                                                },
+                                                "success_metric": {
+                                                    "type": "string",
+                                                    "maxLength": 2000
+                                                },
+                                                "fail_criterion": {
+                                                    "type": "string",
+                                                    "maxLength": 2000
+                                                },
+                                                "baseline_value": {
+                                                    "type": "string",
+                                                    "maxLength": 2000
+                                                },
+                                                "funnel": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                        "Awareness",
+                                                        "Acquisition",
+                                                        "Activation",
+                                                        "Revenue",
+                                                        "Retention",
+                                                        "Referral"
+                                                    ]
+                                                },
+                                                "framework": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                        "ICE",
+                                                        "PIE",
+                                                        "RICE",
+                                                        "CUSTOM"
+                                                    ]
+                                                },
+                                                "custom_framework_id": {
+                                                    "type": "string",
+                                                    "format": "uuid",
+                                                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                                },
+                                                "tags": {
+                                                    "maxItems": 100,
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "string",
+                                                        "minLength": 1,
+                                                        "maxLength": 100
+                                                    }
+                                                },
+                                                "status": {
+                                                    "default": "Idea",
+                                                    "type": "string",
+                                                    "enum": [
+                                                        "Idea",
+                                                        "Approved",
+                                                        "Ready",
+                                                        "Running",
+                                                        "Analyzing",
+                                                        "Winning",
+                                                        "Failed",
+                                                        "Learned",
+                                                        "Archived",
+                                                        "Inconclusive",
+                                                        "Testing",
+                                                        "Analysis"
+                                                    ]
+                                                },
+                                                "result": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                        "Win",
+                                                        "Lose",
+                                                        "Neutral"
+                                                    ]
+                                                },
+                                                "actual_result": {
+                                                    "type": "string",
+                                                    "maxLength": 20000
+                                                },
+                                                "learning_summary": {
+                                                    "type": "string",
+                                                    "maxLength": 20000
+                                                },
+                                                "next_steps": {
+                                                    "type": "string",
+                                                    "maxLength": 20000
+                                                },
+                                                "evidence_links": {
+                                                    "maxItems": 100,
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "string",
+                                                        "minLength": 1,
+                                                        "maxLength": 2048
+                                                    }
+                                                },
+                                                "variants": {
+                                                    "maxItems": 20,
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                            "key": {
+                                                                "type": "string",
+                                                                "minLength": 1,
+                                                                "maxLength": 40,
+                                                                "pattern": "^[A-Za-z0-9_-]+$"
+                                                            },
+                                                            "name": {
+                                                                "type": "string",
+                                                                "minLength": 1,
+                                                                "maxLength": 1000
+                                                            },
+                                                            "is_control": {
+                                                                "default": false,
+                                                                "type": "boolean"
+                                                            },
+                                                            "sample_size": {
+                                                                "type": "integer",
+                                                                "minimum": 0,
+                                                                "maximum": 1000000000
+                                                            }
+                                                        },
+                                                        "required": [
+                                                            "key",
+                                                            "name"
+                                                        ],
+                                                        "additionalProperties": false
+                                                    }
+                                                },
+                                                "winner_variant": {
+                                                    "type": "string",
+                                                    "minLength": 1,
+                                                    "maxLength": 40,
+                                                    "pattern": "^[A-Za-z0-9_-]+$"
+                                                },
+                                                "scores": {
+                                                    "type": "object",
+                                                    "propertyNames": {
+                                                        "type": "string",
+                                                        "minLength": 1,
+                                                        "maxLength": 100
+                                                    },
+                                                    "additionalProperties": {
+                                                        "type": "integer",
+                                                        "minimum": 1,
+                                                        "maximum": 10
+                                                    }
+                                                },
+                                                "start_date": {
+                                                    "type": "string",
+                                                    "format": "date-time",
+                                                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                                                },
+                                                "due_date": {
+                                                    "type": "string",
+                                                    "format": "date-time",
+                                                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                                                },
+                                                "ended_at": {
+                                                    "type": "string",
+                                                    "format": "date-time",
+                                                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                                                }
+                                            },
+                                            "required": [
+                                                "title",
+                                                "short_idea",
+                                                "funnel"
+                                            ],
+                                            "additionalProperties": false
+                                        }
+                                    }
+                                },
+                                "additionalProperties": false
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": true
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "409": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "429": {
+                        "$ref": "#/components/responses/Error"
+                    }
+                }
+            }
+        },
+        "/experiments/{experiment_id}": {
+            "get": {
+                "operationId": "getExperiment",
+                "summary": "Get an experiment",
+                "description": "One experiment with its hypothesis, metrics, scores, variants, outcome and comments.",
+                "tags": [
+                    "Experiments"
+                ],
+                "parameters": [
+                    {
+                        "name": "experiment_id",
+                        "in": "path",
+                        "required": true,
+                        "description": "Experiment ID, from GET /projects/{project_id}/experiments.",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": true
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "429": {
+                        "$ref": "#/components/responses/Error"
+                    }
+                }
+            },
+            "patch": {
+                "operationId": "updateExperiment",
+                "summary": "Update an experiment",
+                "description": "Changes the fields in the body. expected_updated_at must match the experiment's current updated_at, or the call returns 409.",
+                "tags": [
+                    "Experiments"
+                ],
+                "parameters": [
+                    {
+                        "name": "experiment_id",
+                        "in": "path",
+                        "required": true,
+                        "description": "Experiment ID, from GET /projects/{project_id}/experiments.",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    },
+                    {
+                        "$ref": "#/components/parameters/IdempotencyKey"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "title": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 240
+                                    },
+                                    "short_idea": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 2000
+                                    },
+                                    "description": {
+                                        "anyOf": [
+                                            {
+                                                "type": "string",
+                                                "maxLength": 20000
+                                            },
+                                            {
+                                                "type": "null"
+                                            }
+                                        ]
+                                    },
+                                    "hypothesis": {
+                                        "anyOf": [
+                                            {
+                                                "type": "string",
+                                                "maxLength": 20000
+                                            },
+                                            {
+                                                "type": "null"
+                                            }
+                                        ]
+                                    },
+                                    "target_segment": {
+                                        "anyOf": [
+                                            {
+                                                "type": "string",
+                                                "maxLength": 2000
+                                            },
+                                            {
+                                                "type": "null"
+                                            }
+                                        ]
+                                    },
+                                    "target_metric": {
+                                        "anyOf": [
+                                            {
+                                                "type": "string",
+                                                "maxLength": 1000
+                                            },
+                                            {
+                                                "type": "null"
+                                            }
+                                        ]
+                                    },
+                                    "success_metric": {
+                                        "anyOf": [
+                                            {
+                                                "type": "string",
+                                                "maxLength": 2000
+                                            },
+                                            {
+                                                "type": "null"
+                                            }
+                                        ]
+                                    },
+                                    "fail_criterion": {
+                                        "anyOf": [
+                                            {
+                                                "type": "string",
+                                                "maxLength": 2000
+                                            },
+                                            {
+                                                "type": "null"
+                                            }
+                                        ]
+                                    },
+                                    "baseline_value": {
+                                        "anyOf": [
+                                            {
+                                                "type": "string",
+                                                "maxLength": 2000
+                                            },
+                                            {
+                                                "type": "null"
+                                            }
+                                        ]
+                                    },
+                                    "funnel": {
+                                        "type": "string",
+                                        "enum": [
+                                            "Awareness",
+                                            "Acquisition",
+                                            "Activation",
+                                            "Revenue",
+                                            "Retention",
+                                            "Referral"
+                                        ]
+                                    },
+                                    "tags": {
+                                        "maxItems": 100,
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 100
+                                        }
+                                    },
+                                    "start_date": {
+                                        "anyOf": [
+                                            {
+                                                "type": "string",
+                                                "format": "date-time",
+                                                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                                            },
+                                            {
+                                                "type": "null"
+                                            }
+                                        ]
+                                    },
+                                    "due_date": {
+                                        "anyOf": [
+                                            {
+                                                "type": "string",
+                                                "format": "date-time",
+                                                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                                            },
+                                            {
+                                                "type": "null"
+                                            }
+                                        ]
+                                    },
+                                    "ended_at": {
+                                        "anyOf": [
+                                            {
+                                                "type": "string",
+                                                "format": "date-time",
+                                                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                                            },
+                                            {
+                                                "type": "null"
+                                            }
+                                        ]
+                                    },
+                                    "variants": {
+                                        "maxItems": 20,
+                                        "type": "array",
+                                        "items": {
+                                            "type": "object",
+                                            "properties": {
+                                                "key": {
+                                                    "type": "string",
+                                                    "minLength": 1,
+                                                    "maxLength": 40,
+                                                    "pattern": "^[A-Za-z0-9_-]+$"
+                                                },
+                                                "name": {
+                                                    "type": "string",
+                                                    "minLength": 1,
+                                                    "maxLength": 1000
+                                                },
+                                                "is_control": {
+                                                    "default": false,
+                                                    "type": "boolean"
+                                                },
+                                                "sample_size": {
+                                                    "type": "integer",
+                                                    "minimum": 0,
+                                                    "maximum": 1000000000
+                                                }
+                                            },
+                                            "required": [
+                                                "key",
+                                                "name"
+                                            ],
+                                            "additionalProperties": false
+                                        }
+                                    },
+                                    "winner_variant": {
+                                        "anyOf": [
+                                            {
+                                                "type": "string",
+                                                "minLength": 1,
+                                                "maxLength": 40,
+                                                "pattern": "^[A-Za-z0-9_-]+$"
+                                            },
+                                            {
+                                                "type": "null"
+                                            }
+                                        ]
+                                    },
+                                    "actual_result": {
+                                        "anyOf": [
+                                            {
+                                                "type": "string",
+                                                "maxLength": 20000
+                                            },
+                                            {
+                                                "type": "null"
+                                            }
+                                        ]
+                                    },
+                                    "learning_summary": {
+                                        "anyOf": [
+                                            {
+                                                "type": "string",
+                                                "maxLength": 20000
+                                            },
+                                            {
+                                                "type": "null"
+                                            }
+                                        ]
+                                    },
+                                    "next_steps": {
+                                        "anyOf": [
+                                            {
+                                                "type": "string",
+                                                "maxLength": 20000
+                                            },
+                                            {
+                                                "type": "null"
+                                            }
+                                        ]
+                                    },
+                                    "evidence_links": {
+                                        "maxItems": 100,
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 2048
+                                        }
+                                    },
+                                    "expected_updated_at": {
+                                        "type": "string",
+                                        "format": "date-time",
+                                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                                    }
+                                },
+                                "additionalProperties": false,
+                                "required": [
+                                    "expected_updated_at"
+                                ],
+                                "minProperties": 2,
+                                "description": "The fields to change, plus expected_updated_at: the experiment's current updated_at."
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": true
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "409": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "429": {
+                        "$ref": "#/components/responses/Error"
+                    }
+                }
+            }
+        },
+        "/experiments/{experiment_id}/transition": {
+            "post": {
+                "operationId": "transitionExperiment",
+                "summary": "Move an experiment to a stage",
+                "description": "Moves the experiment to another pipeline stage, such as Running or Analyzing.",
+                "tags": [
+                    "Experiments"
+                ],
+                "parameters": [
+                    {
+                        "name": "experiment_id",
+                        "in": "path",
+                        "required": true,
+                        "description": "Experiment ID, from GET /projects/{project_id}/experiments.",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    },
+                    {
+                        "$ref": "#/components/parameters/IdempotencyKey"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "to_status": {
+                                        "type": "string",
+                                        "enum": [
+                                            "Approved",
+                                            "Ready",
+                                            "Running",
+                                            "Analyzing",
+                                            "Winning",
+                                            "Failed",
+                                            "Inconclusive",
+                                            "Learned",
+                                            "Archived"
+                                        ]
+                                    },
+                                    "expected_updated_at": {
+                                        "type": "string",
+                                        "format": "date-time",
+                                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                                    }
+                                },
+                                "required": [
+                                    "to_status",
+                                    "expected_updated_at"
+                                ],
+                                "additionalProperties": false
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": true
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "409": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "429": {
+                        "$ref": "#/components/responses/Error"
+                    }
+                }
+            }
+        },
+        "/experiments/{experiment_id}/outcome": {
+            "post": {
+                "operationId": "recordOutcome",
+                "summary": "Record an outcome",
+                "description": "Records the result, what happened and the learning, and closes the experiment.",
+                "tags": [
+                    "Experiments"
+                ],
+                "parameters": [
+                    {
+                        "name": "experiment_id",
+                        "in": "path",
+                        "required": true,
+                        "description": "Experiment ID, from GET /projects/{project_id}/experiments.",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    },
+                    {
+                        "$ref": "#/components/parameters/IdempotencyKey"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "result": {
+                                        "type": "string",
+                                        "enum": [
+                                            "Win",
+                                            "Lose",
+                                            "Neutral"
+                                        ]
+                                    },
+                                    "actual_result": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 20000
+                                    },
+                                    "learning_summary": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 20000
+                                    },
+                                    "next_steps": {
+                                        "type": "string",
+                                        "maxLength": 20000
+                                    },
+                                    "evidence_links": {
+                                        "maxItems": 100,
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 2048
+                                        }
+                                    },
+                                    "winner_variant": {
+                                        "anyOf": [
+                                            {
+                                                "type": "string",
+                                                "minLength": 1,
+                                                "maxLength": 40,
+                                                "pattern": "^[A-Za-z0-9_-]+$"
+                                            },
+                                            {
+                                                "type": "null"
+                                            }
+                                        ]
+                                    },
+                                    "ended_at": {
+                                        "type": "string",
+                                        "format": "date-time",
+                                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                                    },
+                                    "final_status": {
+                                        "type": "string",
+                                        "enum": [
+                                            "Winning",
+                                            "Failed",
+                                            "Inconclusive",
+                                            "Learned"
+                                        ]
+                                    },
+                                    "expected_updated_at": {
+                                        "type": "string",
+                                        "format": "date-time",
+                                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                                    }
+                                },
+                                "required": [
+                                    "result",
+                                    "actual_result",
+                                    "learning_summary",
+                                    "expected_updated_at"
+                                ],
+                                "additionalProperties": false
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": true
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "409": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "429": {
+                        "$ref": "#/components/responses/Error"
+                    }
+                }
+            }
+        },
+        "/experiments/{experiment_id}/comments": {
+            "post": {
+                "operationId": "addComment",
+                "summary": "Add a comment",
+                "description": "Adds a dated comment to the experiment. It does not change the experiment updated_at.",
+                "tags": [
+                    "Comments"
+                ],
+                "parameters": [
+                    {
+                        "name": "experiment_id",
+                        "in": "path",
+                        "required": true,
+                        "description": "Experiment ID, from GET /projects/{project_id}/experiments.",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    },
+                    {
+                        "$ref": "#/components/parameters/IdempotencyKey"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "content": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 10000
+                                    }
+                                },
+                                "required": [
+                                    "content"
+                                ],
+                                "additionalProperties": false
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": true
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "409": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "429": {
+                        "$ref": "#/components/responses/Error"
+                    }
+                }
+            }
+        },
+        "/projects/{project_id}/learnings": {
+            "get": {
+                "operationId": "listLearnings",
+                "summary": "List learnings",
+                "description": "Experiment outcomes and learnings, most recently updated first. With ended_after, experiments without an end date are left out.\n\nFor a polling trigger, read the first page (most recently updated first) and dedupe on experiment_id plus updated_at. Do not poll with ended_after: an outcome recorded later keeps the earlier end date and would be missed.",
+                "tags": [
+                    "Learnings"
+                ],
+                "parameters": [
+                    {
+                        "name": "project_id",
+                        "in": "path",
+                        "required": true,
+                        "description": "Project ID, from GET /projects.",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    },
+                    {
+                        "name": "results",
+                        "in": "query",
+                        "required": false,
+                        "style": "form",
+                        "explode": true,
+                        "description": "Repeat the parameter or separate values with commas.",
+                        "schema": {
+                            "maxItems": 3,
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "enum": [
+                                    "Win",
+                                    "Lose",
+                                    "Neutral"
+                                ]
+                            }
+                        }
+                    },
+                    {
+                        "name": "statuses",
+                        "in": "query",
+                        "required": false,
+                        "style": "form",
+                        "explode": true,
+                        "description": "Repeat the parameter or separate values with commas.",
+                        "schema": {
+                            "default": [
+                                "Winning",
+                                "Failed",
+                                "Inconclusive",
+                                "Learned"
+                            ],
+                            "minItems": 1,
+                            "maxItems": 12,
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "enum": [
+                                    "Idea",
+                                    "Approved",
+                                    "Ready",
+                                    "Running",
+                                    "Analyzing",
+                                    "Winning",
+                                    "Failed",
+                                    "Learned",
+                                    "Archived",
+                                    "Inconclusive",
+                                    "Testing",
+                                    "Analysis"
+                                ]
+                            }
+                        }
+                    },
+                    {
+                        "name": "ended_after",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "date-time",
+                            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                        }
+                    },
+                    {
+                        "name": "cursor",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 2048
+                        }
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "default": 20,
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 100
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": true
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "401": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "403": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "404": {
+                        "$ref": "#/components/responses/Error"
+                    },
+                    "429": {
+                        "$ref": "#/components/responses/Error"
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "securitySchemes": {
+            "apiKey": {
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "hyp_ API key",
+                "description": "Personal API key from Settings, API keys."
+            }
+        },
+        "parameters": {
+            "IdempotencyKey": {
+                "name": "Idempotency-Key",
+                "in": "header",
+                "required": false,
+                "description": "8 to 200 visible ASCII characters. A retry with the same key and body within 24 hours replays the first response.",
+                "schema": {
+                    "type": "string",
+                    "minLength": 8,
+                    "maxLength": 200
+                }
+            }
+        },
+        "schemas": {
+            "Error": {
+                "type": "object",
+                "required": [
+                    "error"
+                ],
+                "properties": {
+                    "error": {
+                        "type": "object",
+                        "required": [
+                            "code",
+                            "message"
+                        ],
+                        "properties": {
+                            "code": {
+                                "type": "string",
+                                "examples": [
+                                    "NOT_FOUND"
+                                ]
+                            },
+                            "message": {
+                                "type": "string"
+                            }
+                        },
+                        "additionalProperties": true
+                    }
+                }
+            }
+        },
+        "responses": {
+            "Error": {
+                "description": "Error",
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "$ref": "#/components/schemas/Error"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

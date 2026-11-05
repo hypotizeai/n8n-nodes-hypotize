@@ -1,0 +1,18 @@
+{
+	"node": "n8n-nodes-hypotize.hypotize",
+	"nodeVersion": "1.0",
+	"codexVersion": "1.0",
+	"categories": ["Productivity", "Marketing & Content"],
+	"resources": {
+		"credentialDocumentation": [
+			{
+				"url": "https://github.com/hypotizeai/n8n-nodes-hypotize#credentials"
+			}
+		],
+		"primaryDocumentation": [
+			{
+				"url": "https://hypotize.ai/developers?utm_source=n8n&utm_medium=integration"
+			}
+		]
+	}
+}

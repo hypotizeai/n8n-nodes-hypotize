@@ -1,6 +1,6 @@
 {
 	"name": "n8n-nodes-hypotize",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "n8n nodes for Hypotize, the agent-native Growth OS: read and write growth experiments, ideas and learnings, and trigger workflows when they change.",
 	"license": "MIT",
 	"publishConfig": {

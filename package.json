@@ -3,6 +3,9 @@
 	"version": "0.1.0",
 	"description": "n8n nodes for Hypotize, the agent-native Growth OS: read and write growth experiments, ideas and learnings, and trigger workflows when they change.",
 	"license": "MIT",
+	"publishConfig": {
+		"access": "public"
+	},
 	"homepage": "https://hypotize.ai/developers?utm_source=npm&utm_medium=integration",
 	"keywords": [
 		"n8n-community-node-package",
